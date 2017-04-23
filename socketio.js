@@ -3,6 +3,7 @@
  */
 const socketio = require('socket.io');
 const { DEFAULT_NAME, DEFAULT_ROOM, EVENTS } = require('./constans');
+const { logUserMessage } = require('./db/api');
 
 module.exports = server => {
     const io = socketio(server);
@@ -40,7 +41,7 @@ module.exports = server => {
         };
         const onMessage = ({ message }) => {
             console.log(['socket.on'], EVENTS.MESSAGE, { message });
-            
+            logUserMessage(Object.assign({}, user, { message }));
             io.sockets.in(user.room).emit(EVENTS.MESSAGE, `${user.name}: ${message}`);
         };
         const onRoom = async ({ room }) => {
