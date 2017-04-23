@@ -156,7 +156,7 @@
       users.forEach(user => {
           $('#users-list').append($('<li>').text(user).click(() => {
               const userName = user;
-      const message = `Pozdrawiam`;
+              const message = `Pozdrawiam`;
       
       socket.emit('pm', { token, userName, message });
       }));

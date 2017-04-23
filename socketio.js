@@ -72,6 +72,18 @@ module.exports = server => {
             io.local.emit(EVENTS.MESSAGE, `Użytkownik ${oldName} zmienił nazwę na ${name}`);
             socket.emit(EVENTS.USER, name);
         };
+    
+        const onPM = async ({ userName, message }) => {
+            const userTo = users[userName];
+            console.log(['socket.on'], EVENTS.PM, { userName, message });
+        
+            if (userTo) {
+                socket.to(userTo.id).emit(EVENTS.PM, `Użytkownik ${user.name} wysłał Ci prywatną wiadomość o treści: ${message}`);
+                socket.emit(EVENTS.PM, `Prywatna wiadomość do ${userName}: ${message}`);
+            } else {
+                socket.emit(EVENTS.PM, `Nie można wysłać wiadomości do użytkownika ${userName}`);
+            }
+        };
         
         // join room and emit initial data
         socket.join(user.room, () => {
@@ -87,5 +99,6 @@ module.exports = server => {
         socket.on(EVENTS.MESSAGE, onMessage);
         socket.on(EVENTS.ROOM, onRoom);
         socket.on(EVENTS.NAME, onName);
+        socket.on(EVENTS.PM, onPM);
     });
 };
