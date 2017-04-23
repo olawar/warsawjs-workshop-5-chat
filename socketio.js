@@ -31,7 +31,14 @@ module.exports = (server) => {
       socket.on('message', ({message}) => {
           console.log('socket.on.message', message);
           io.local.emit('message', `${user.name} : ${message}`);
-      })
+      });
+      
+      socket.on('disconnect', () => {
+         delete connected[socket.id];
+         delete users[user.name];
+         console.log('socket.on.disconnect', user);
+         socket.broadcast.emit('message', `użytkownik ${user.name} rozłączył się`);
+      });
   
   });
 };
