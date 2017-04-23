@@ -4,3 +4,4 @@ dist
 .sass-cache
 .project
 .settings
+chat.db
