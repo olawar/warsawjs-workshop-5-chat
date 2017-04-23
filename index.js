@@ -12,4 +12,4 @@ const PORT = process.env.PORT || "30001";
 require('./socketio')(server);
 
 app.get('/', (req, res) => res.sendFile(resolve(__dirname, './index.html')));
-server.listen(PORT, () => console.log(['listening on port '], PORT));
+server.listen(PORT, () => console.log('listening on port ', PORT));
