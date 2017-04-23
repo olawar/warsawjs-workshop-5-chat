@@ -21,7 +21,6 @@ const addUser = async ({ name, password }) => {
         const db = await sqlite.open('chat.db');
         await db.run(`INSERT into users(name, passwordHash) VALUES ('${name}', '${passwordHash}')`);
         return true;
-        
     } catch(error) {
         console.log(['api.addUser.error'], error);
     }
@@ -30,6 +29,7 @@ const addUser = async ({ name, password }) => {
 const getUser = async ({ name, password }) => {
     console.log(['api.getUser'], name, password);
     try {
+        console.log(['api.getUser'], 'success');
         const db = await sqlite.open('chat.db');
         const user = await db.get(`SELECT * FROM users WHERE name='${name}'`) || {};
         const verified = await compare(password, user.passwordHash);

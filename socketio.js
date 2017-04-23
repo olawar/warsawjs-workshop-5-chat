@@ -3,7 +3,8 @@
  */
 const socketio = require('socket.io');
 const { DEFAULT_NAME, DEFAULT_ROOM, EVENTS } = require('./constans');
-const { addUser, getUser, logUserMessage } = require('./db/api');
+const { logUserMessage } = require('./db/api');
+const { login, register, verifyToken } = require('./authenticate');
 
 
 module.exports = server => {
@@ -102,9 +103,10 @@ module.exports = server => {
         };
         const onLogin = async ({name, password}) => {
             console.log(['socket.on'], EVENTS.REGISTER, { name, password });
-            const success = await getUser({name, password});
-            if(success) {
+            const token = await login({name, password});
+            if(token) {
                 socket.emit(EVENTS.MESSAGE, `Logowanie przebiegło pomyślnie`);
+                socket.emit(EVENTS.LOGGED, token);
                 changeUserName(name);
                 user.logged = true;
             } else {
@@ -113,9 +115,10 @@ module.exports = server => {
         };
         const onRegister = async ({name, password}) => {
             console.log(['socket.on'], EVENTS.REGISTER, { name, password });
-            const success = await addUser({name, password});
-            if(success) {
+            const token = await register({name, password});
+            if(token) {
                 socket.emit(EVENTS.MESSAGE, `Rejestracja przebiegła pomyślnie. Automatyczne logowanie`);
+                socket.emit(EVENTS.LOGGED, token);
                 changeUserName(name);
                 user.logged = true;
             } else {
@@ -145,7 +148,9 @@ module.exports = server => {
         socket.on(EVENTS.DISCONNECT, onDisconnect);
         socket.on(EVENTS.MESSAGE, onMessage);
         socket.on(EVENTS.NAME, onName);
-        socket.on(EVENTS.PM, onPM);
+        socket.on(EVENTS.PM, verifyToken(onPM, () => {
+            socket.emit(EVENTS.MESSAGE, 'Operacja tylko dla zwerifikowanych użytkowników');
+        }));
         socket.on(EVENTS.ROOM, onRoom);
         socket.on(EVENTS.LOGIN, preventLogged(onLogin));
         socket.on(EVENTS.REGISTER, preventLogged(onRegister));

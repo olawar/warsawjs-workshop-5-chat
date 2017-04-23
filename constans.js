@@ -15,8 +15,11 @@ const EVENTS = {
     NAME: 'name',
     PM: 'pm',
     LOGIN: 'login',
-    REGISTER: 'register'
+    REGISTER: 'register',
+    LOGGED: 'logged'
 };
+
+const SECRET = 'totoro';
 
 module.exports = {
     DEFAULT_ROOM,
