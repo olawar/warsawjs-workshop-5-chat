@@ -3,7 +3,8 @@
  */
 const socketio = require('socket.io');
 const { DEFAULT_NAME, DEFAULT_ROOM, EVENTS } = require('./constans');
-const { logUserMessage } = require('./db/api');
+const { addUser, getUser, logUserMessage } = require('./db/api');
+
 
 module.exports = server => {
     const io = socketio(server);
@@ -14,11 +15,12 @@ module.exports = server => {
     const rooms = [DEFAULT_ROOM];
     
     io.on(EVENTS.CONNECTION, socket => {
-        console.log('io.on', EVENTS.CONNECTION, socket.id);
+        console.log(['io.on'], EVENTS.CONNECTION, socket.id);
         const user = {
             id: socket.id,
             room: DEFAULT_ROOM,
             name: `${DEFAULT_NAME}${connections}`,
+            logged: false
         };
         
         // add user to connected users and create mapping for accessing users info by name and socket id
@@ -27,10 +29,22 @@ module.exports = server => {
         users[user.name] = user;
         
         //helpers functions
+        const changeUserName = (name) => {
+            const oldName = user.name;
+            
+            user.name = name;
+            users[name] = user;
+            
+            delete users[oldName];
+            
+            socket.emit(EVENTS.USER, user.name);
+            io.local.emit(EVENTS.USERS, Object.keys(users));
+            io.local.emit(EVENTS.MESSAGE, `Użytkownik ${oldName} zmienił nazwę na: '${name}'`);
+        };
         
         // event handlers
         const onDisconnect = () => {
-            console.log('io.on', EVENTS.DISCONNECT, connected);
+            console.log(['io.on'], EVENTS.DISCONNECT, connected);
             io.clients((error, users) => {
                 socket.broadcast.emit(EVENTS.MESSAGE, `Użytkownik ${user.name} rozłączył się`);
                 socket.broadcast.emit(EVENTS.USERS, Object.keys(users));
@@ -41,8 +55,31 @@ module.exports = server => {
         };
         const onMessage = ({ message }) => {
             console.log(['socket.on'], EVENTS.MESSAGE, { message });
-            logUserMessage(Object.assign({}, user, { message }));
+            logUserMessage(Object.assign({}, user, {message}));
+            
             io.sockets.in(user.room).emit(EVENTS.MESSAGE, `${user.name}: ${message}`);
+        };
+        const onName = async ({ name }) => {
+            console.log(['socket.on'], EVENTS.NAME, { name });
+            if (users[name]) {
+                socket.emit(EVENTS.MESSAGE, `Nazwa ${name} jest zajęta`);
+                return null;
+            }
+            changeUserName(name);
+            
+            socket.emit(EVENTS.USER, user.name);
+            io.local.emit(EVENTS.USERS, Object.keys(users));
+        };
+        const onPM = async ({ userName, message }) => {
+            const userTo = users[userName];
+            console.log(['socket.on'], EVENTS.PM, { userName, message });
+            
+            if (userTo) {
+                socket.to(userTo.id).emit(EVENTS.PM, `Użytkownik ${user.name} wysłał Ci prywatną wiadomość o treści: ${message}`);
+                socket.emit(EVENTS.PM, `Prywatna wiadomość do ${userName}: ${message}`);
+            } else {
+                socket.emit(EVENTS.PM, `Nie można wysłać wiadomości do użytkownika ${userName}`);
+            }
         };
         const onRoom = async ({ room }) => {
             const oldRoom = user.room;
@@ -63,26 +100,35 @@ module.exports = server => {
                 socket.emit(EVENTS.ROOM, room);
             });
         };
-        
-        const onName = ({ name }) => {
-            const oldName = user.name;
-            user.name = name;
-            users[name] = user;
-            connected[user.id] = user;
-            delete users[oldName];
-            io.local.emit(EVENTS.MESSAGE, `Użytkownik ${oldName} zmienił nazwę na ${name}`);
-            socket.emit(EVENTS.USER, name);
-        };
-    
-        const onPM = async ({ userName, message }) => {
-            const userTo = users[userName];
-            console.log(['socket.on'], EVENTS.PM, { userName, message });
-        
-            if (userTo) {
-                socket.to(userTo.id).emit(EVENTS.PM, `Użytkownik ${user.name} wysłał Ci prywatną wiadomość o treści: ${message}`);
-                socket.emit(EVENTS.PM, `Prywatna wiadomość do ${userName}: ${message}`);
+        const onLogin = async ({name, password}) => {
+            console.log(['socket.on'], EVENTS.REGISTER, { name, password });
+            const success = await getUser({name, password});
+            if(success) {
+                socket.emit(EVENTS.MESSAGE, `Logowanie przebiegło pomyślnie`);
+                changeUserName(name);
+                user.logged = true;
             } else {
-                socket.emit(EVENTS.PM, `Nie można wysłać wiadomości do użytkownika ${userName}`);
+                socket.emit(EVENTS.ERROR, `Logowanie nie powiodło się`);
+            }
+        };
+        const onRegister = async ({name, password}) => {
+            console.log(['socket.on'], EVENTS.REGISTER, { name, password });
+            const success = await addUser({name, password});
+            if(success) {
+                socket.emit(EVENTS.MESSAGE, `Rejestracja przebiegła pomyślnie. Automatyczne logowanie`);
+                changeUserName(name);
+                user.logged = true;
+            } else {
+                socket.emit(EVENTS.ERROR, `Rejestracja nie powiodła się. Błąd: ${error}`);
+            }
+        };
+        
+        const preventLogged = (next) => (...args) => {
+            if(user.logged) {
+                socket.emit(EVENTS.MESSAGE, 'Operacja tylko dla niezalogowanych');
+                return false;
+            } else {
+                next(...args);
             }
         };
         
@@ -98,8 +144,10 @@ module.exports = server => {
         // handle sockets events
         socket.on(EVENTS.DISCONNECT, onDisconnect);
         socket.on(EVENTS.MESSAGE, onMessage);
-        socket.on(EVENTS.ROOM, onRoom);
         socket.on(EVENTS.NAME, onName);
         socket.on(EVENTS.PM, onPM);
+        socket.on(EVENTS.ROOM, onRoom);
+        socket.on(EVENTS.LOGIN, preventLogged(onLogin));
+        socket.on(EVENTS.REGISTER, preventLogged(onRegister));
     });
 };
