@@ -2,65 +2,90 @@
  * Created by Awar on 2017-04-23.
  */
 const socketio = require('socket.io');
+const { DEFAULT_NAME, DEFAULT_ROOM, EVENTS } = require('./constans');
 
-module.exports = (server) => {
-  const io = socketio(server);
-  let connections = 0;
-  const connected = {};
-  const users = {};
-  const rooms = ['Poczekalnia'];
-  
-  io.on('connection', socket => {
-      console.log(['connection'], socket.id);
-      connections ++;
-      const user = {
-          name: `Bezimienny${connections}`,
-          room: 'Poczekalnia',
-          id: socket.id
-      };
-     
-      users[user.name] = user;
-      connected[socket.id] = users[user.name];
-      
-      io.local.emit('message', `użytkownik ${user.name} połączył się`);
-      socket.emit('rooms', rooms);                
-      
-      socket.join(user.room, () => {
-          console.log(`użytkownik ${user.name} dołączył do pokoju`);
-          socket.broadcast.emit('message', `użytkownik ${user.name} dołączył do pokoju`);
-      });
-      
-      socket.on('message', ({message}) => {
-          console.log('socket.on.message', message);
-          io.sockets.in(user.room).emit('message', `${user.name} : ${message}`);
-      });
-      
-      socket.on('room', ({ room }) => {
-          console.log('socket.on.room', room);
-          const oldRoom = user.room;
-          user.room = room;
-          
-          if(!rooms.includes(room)) {
-              rooms.push(room);
-              io.local.emit('rooms', rooms);
-          }
-          
-          socket.leave(oldRoom, () => {
-              socket.broadcast.to(oldRoom).emit('message', `Użytkownik ${user.name} opuścił pokój`);
-          });
-          
-          socket.join(user.room, () => {
-              socket.broadcast.to(room).emit('message', `Użytkownik ${user.name} dołączył do pokoju`);
-              socket.emit('message', `Zmieniłeś pokój na ${user.room}`);
-          });
-      });
-      
-      socket.on('disconnect', () => {
-         console.log('socket.on.disconnect', user);
-         delete connected[socket.id];
-         delete users[user.name];
-         socket.broadcast.emit('message', `użytkownik ${user.name} rozłączył się`);
-      });                 
-  
-  });
+module.exports = server => {
+    const io = socketio(server);
+    // for simplicity
+    let connections = 0;
+    const connected = {};
+    const users = {};
+    const rooms = [DEFAULT_ROOM];
+    
+    io.on(EVENTS.CONNECTION, socket => {
+        console.log('io.on', EVENTS.CONNECTION, socket.id);
+        const user = {
+            id: socket.id,
+            room: DEFAULT_ROOM,
+            name: `${DEFAULT_NAME}${connections}`,
+        };
+        
+        // add user to connected users and create mapping for accessing users info by name and socket id
+        connections++;
+        connected[socket.id] = users[user.name];
+        users[user.name] = user;
+        
+        //helpers functions
+        
+        // event handlers
+        const onDisconnect = () => {
+            console.log('io.on', EVENTS.DISCONNECT, connected);
+            io.clients((error, users) => {
+                socket.broadcast.emit(EVENTS.MESSAGE, `Użytkownik ${user.name} rozłączył się`);
+                socket.broadcast.emit(EVENTS.USERS, Object.keys(users));
+            });
+            
+            delete connected[socket.id];
+            delete users[user.name];
+        };
+        const onMessage = ({ message }) => {
+            console.log(['socket.on'], EVENTS.MESSAGE, { message });
+            
+            io.sockets.in(user.room).emit(EVENTS.MESSAGE, `${user.name}: ${message}`);
+        };
+        const onRoom = async ({ room }) => {
+            const oldRoom = user.room;
+            console.log(['socket.on'], EVENTS.ROOM, { room });
+            
+            if (rooms.indexOf(room) < 0) {
+                rooms.push(room);
+                io.local.emit(EVENTS.ROOMS, rooms);
+            }
+            
+            user.room = room;
+            socket.leave(oldRoom, () => {
+                socket.broadcast.to(oldRoom).emit(EVENTS.MESSAGE, `Użytkownik ${user.name} opuścił pokój`);
+            });
+            socket.join(room, () => {
+                socket.broadcast.to(room).emit(EVENTS.MESSAGE, `Użytkownik ${user.name} dołączył do pokoju`);
+                socket.emit(EVENTS.MESSAGE, `Zmieniłeś pokój na ${room}`);
+                socket.emit(EVENTS.ROOM, room);
+            });
+        };
+        
+        const onName = ({ name }) => {
+            const oldName = user.name;
+            user.name = name;
+            users[name] = user;
+            connected[user.id] = user;
+            delete users[oldName];
+            io.local.emit(EVENTS.MESSAGE, `Użytkownik ${oldName} zmienił nazwę na ${name}`);
+            socket.emit(EVENTS.USER, name);
+        };
+        
+        // join room and emit initial data
+        socket.join(user.room, () => {
+            socket.broadcast.emit(EVENTS.MESSAGE, `Użytkownik ${user.name} połączył się`);
+            socket.emit(EVENTS.ROOM, user.room);
+            socket.emit(EVENTS.ROOMS, rooms);
+            socket.emit(EVENTS.USER, user.name);
+            io.local.emit(EVENTS.USERS, Object.keys(users));
+        });
+        
+        // handle sockets events
+        socket.on(EVENTS.DISCONNECT, onDisconnect);
+        socket.on(EVENTS.MESSAGE, onMessage);
+        socket.on(EVENTS.ROOM, onRoom);
+        socket.on(EVENTS.NAME, onName);
+    });
 };

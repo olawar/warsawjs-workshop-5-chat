@@ -183,6 +183,11 @@
           console.log(['socket.on.room'], room);
       $('#room').text(room);
       });
+    
+      socket.on('user', (user) => {
+          console.log(['socket.on.user'], user);
+          $('#user').text(user);
+      });
       
       socket.on('rooms', (rooms) => {
           console.log(['socket.on.rooms'], rooms);
@@ -213,6 +218,7 @@
 <div id="container" hidden>
   <div id="chat">
     <h1 id="room"></h1>
+    <h2 id="user"></h2>
     <ul id="messages"></ul>
   
   </div>
